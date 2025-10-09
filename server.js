@@ -45,7 +45,7 @@ app.use(helmet());
 // ---------- ALLOWED ORIGINS ----------
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://poslightcontrol.netlify.app',
+  'https://pos-light-house-new.netlify.app',
   'https://poslightcontrollive.netlify.app',
   'https://pos-light-controls.netlify.app'
 ];
