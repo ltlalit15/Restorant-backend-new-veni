@@ -338,7 +338,7 @@ const deleteSession = async (req, res) => {
 const startSession = async (req, res) => {
   try {
     const { table_id, user_id } = req.body;
-    let { amount, time_limit, customer_name, customer_phone } = req.body;
+    let { amount, time_limit, customer_name, customer_phone, start_time } = req.body;
 
     // Optional fields fallback
     customer_name = customer_name || null;
@@ -377,8 +377,7 @@ const startSession = async (req, res) => {
     // Generate session ID
     const session_id = generateSessionId();
 
-    // Automatically set start_time to current timestamp
-    const start_time = new Date();
+   
 
     // Create session
     const [result] = await db.execute(
