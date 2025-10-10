@@ -183,13 +183,13 @@ static async getTableOrdersByDate() {
                 'items', (
                     SELECT JSON_ARRAYAGG(
                         JSON_OBJECT(
-                            'itemName', COALESCE(mi.name, 'Item name not available'),
+                            'itemName', COALESCE(mi.item_name, 'Item name not available'),
                             'quantity', oi2.quantity,
                             'price', oi2.total_price
                         )
                     )
                     FROM order_items oi2
-                    LEFT JOIN menu_items mi ON oi2.menu_item_id = mi.id
+                    LEFT JOIN item_new mi ON oi2.menu_item_id = mi.id
                     WHERE oi2.order_id = o.id
                 ),
                 'orderTotal', (
