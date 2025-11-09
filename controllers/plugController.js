@@ -1,12 +1,9 @@
 const db = require('../config/database');
-const axios = require('axios'); // Uncomment when you have actual smart plug API endpoints
-//const { TapoPlug } = require("tp-link-tapo-connect"); // ✅ Make sure you installed: npm i tp-link-tapo-connect
+const axios = require('axios');
 const crypto = require('crypto');
 const { TuyaContext } = require('@tuya/tuya-connector-nodejs');
-
-const { loginDevice } = require("tp-link-tapo-connect"); // ✅ FIXED import
+const { loginDevice } = require("tp-link-tapo-connect");
 const { Client } = require("tplink-smarthome-api");
-
 
 // ✅ MAC address normalize karne ke liye helper
 function normalizeMac(mac) {
@@ -32,9 +29,9 @@ async function controlTapoPlug(plug, action) {
     let mode;
 
     // ------------------ Try WiFi (Cloud login) ------------------
-    if (plug.email && plug.password && plug.ip_address) {
+    if (plug.auth_username && plug.auth_password && plug.ip_address) {
       try {
-        device = await loginDeviceByIp(plug.email, plug.password, plug.ip_address);
+        device = await loginDevice(plug.auth_username, plug.auth_password, plug.ip_address);
         mode = "WiFi";
         console.log(`✅ WiFi login success for ${plug.ip_address}`);
       } catch (wifiErr) {
@@ -110,6 +107,13 @@ async function controlTapoPlug(plug, action) {
   }
 }
 
+// Tuya Context Setup
+const tuyaContext = new TuyaContext({
+  baseUrl: 'https://openapi.tuyaeu.com', // EU data center
+  accessKey: 'rphsmydc87qruq9ynhhg',    // Your Access ID/Client ID
+  secretKey: '9ad7c6cdfd154b428171dd08789a2211' // Your Access Secret
+});
+
 // Get all smart plugs with power status from Tuya Cloud
 const getAllPlugs = async (req, res) => {
   try {
@@ -121,6 +125,7 @@ const getAllPlugs = async (req, res) => {
     `);
 
     // Fetch Tuya Cloud status for each plug
+    let ipWhitelistErrorDetected = false;
     const plugsWithStatus = await Promise.all(
       plugs.map(async (plug) => {
         const deviceId = plug.plug_id; // 🔑 use plug_id as Tuya device_id
@@ -145,7 +150,24 @@ const getAllPlugs = async (req, res) => {
             raw_status: statusList  // optional for debugging
           };
         } catch (statusErr) {
-          console.error(`⚠️ Failed to fetch status for plug_id=${deviceId}:`, statusErr.message);
+          const errorMsg = statusErr.message || "";
+          
+          // Check if it's an IP whitelisting error
+          if (errorMsg.includes("GET_TOKEN_FAILED") || errorMsg.includes("don't have access")) {
+            if (!ipWhitelistErrorDetected) {
+              console.warn(`⚠️ IP Whitelisting Required: Your server IP needs to be whitelisted in Tuya Cloud. Status fetching will be skipped.`);
+              ipWhitelistErrorDetected = true;
+            }
+            // Return plug with current DB state instead of "unknown"
+            return { 
+              ...plug, 
+              power_state: plug.power_state || "off",
+              _statusFetchError: "IP_WHITELIST_REQUIRED"
+            };
+          }
+          
+          // For other errors, log once per unique error
+          console.error(`⚠️ Failed to fetch status for plug_id=${deviceId}:`, errorMsg);
           return { ...plug, power_state: "unknown" };
         }
       })
@@ -164,7 +186,6 @@ const getAllPlugs = async (req, res) => {
     });
   }
 };
-
 
 // Get plug by ID
 const getPlugById = async (req, res) => {
@@ -243,26 +264,49 @@ const createPlug = async (req, res) => {
   }
 };
 
-// Update smart plug
+// ✅✅✅ Update smart plug - FINAL FIXED VERSION ✅✅✅
 const updatePlug = async (req, res) => {
   try {
     const { id } = req.params;
 
-    // ✅ let use karo taki reassign kar sako
-    let { plug_id, name, table_id, ip_address, mac_address, status, power_state, device_id, brand, auth_username, auth_password } = req.body;
+    let { 
+      plug_id, 
+      name, 
+      table_id, 
+      ip_address, 
+      mac_address, 
+      status, 
+      power_state, 
+      device_id, 
+      brand, 
+      auth_username, 
+      auth_password,
+      api_key
+    } = req.body;
 
-    // Convert undefined -> null
+    // ✅ CRITICAL FIX: Power state validation for ENUM column
+    if (power_state === undefined || power_state === null || power_state === '') {
+      power_state = 'off';
+    } else {
+      // Convert to lowercase and ensure it's 'on' or 'off'
+      power_state = power_state.toString().toLowerCase().trim();
+      if (!['on', 'off'].includes(power_state)) {
+        power_state = 'off';
+      }
+    }
+
+    // Convert other undefined -> null
     plug_id = plug_id ?? null;
     name = name ?? null;
     table_id = table_id ?? null;
     ip_address = ip_address ?? null;
     mac_address = mac_address ?? null;
     status = status ?? null;
-    power_state = power_state ?? null;
     device_id = device_id ?? null;
     brand = brand ?? null;
     auth_username = auth_username ?? null;
     auth_password = auth_password ?? null;
+    api_key = api_key ?? null;
 
     // Check if plug exists
     const [existing] = await db.execute(
@@ -292,12 +336,23 @@ const updatePlug = async (req, res) => {
       }
     }
 
+    // Debug log
+    console.log('✅ Updating plug with values:', {
+      id,
+      power_state,
+      status,
+      brand
+    });
+
     const [result] = await db.execute(
       `UPDATE smart_plugs 
        SET plug_id = ?, name = ?, table_id = ?, ip_address = ?, 
-           mac_address = ?, status = ?, power_state = ?, device_id = ?, brand = ?, auth_username = ?, auth_password = ?, updated_at = CURRENT_TIMESTAMP 
+           mac_address = ?, status = ?, power_state = ?, device_id = ?, 
+           brand = ?, auth_username = ?, auth_password = ?, api_key = ?, 
+           updated_at = CURRENT_TIMESTAMP 
        WHERE id = ?`,
-      [plug_id, name, table_id, ip_address, mac_address, status, power_state, device_id, brand, auth_username, auth_password,  id]
+      [plug_id, name, table_id, ip_address, mac_address, status, power_state, 
+       device_id, brand, auth_username, auth_password, api_key, id]
     );
 
     if (result.affectedRows === 0) {
@@ -329,8 +384,6 @@ const updatePlug = async (req, res) => {
   }
 };
 
-
-
 // ------------------ SONOFF ------------------
 async function controlSonoffPlug(plug, action) {
   try {
@@ -339,10 +392,10 @@ async function controlSonoffPlug(plug, action) {
     let mode;
 
     // ------------------ Try WiFi (Cloud login) ------------------
-    if (plug.email && plug.password) {
+    if (plug.auth_username && plug.auth_password) {
       try {
         // 👇 yahan aapko Sonoff ka cloud SDK use karna padega
-        const device = await loginSonoffCloud(plug.email, plug.password, plug.device_id);
+        const device = await loginSonoffCloud(plug.auth_username, plug.auth_password, plug.device_id);
         mode = "WiFi";
         if (action === "on") await device.turnOn();
         else await device.turnOff();
@@ -396,23 +449,21 @@ async function controlSonoffPlug(plug, action) {
   }
 }
 
-const tuyaContext = new TuyaContext({
-  baseUrl: 'https://openapi.tuyaeu.com', // EU data center
-  accessKey: 'rphsmydc87qruq9ynhhg',    // Your Access ID/Client ID
-  secretKey: '9ad7c6cdfd154b428171dd08789a2211' // Your Access Secret
-});
-
 // ------------------ BAYTION ------------------
 async function controlBaytionPlug(plug, action) {
   try {
     console.log("Received Baytion plug object:", plug);
     let mode = "TuyaCloud";
 
-    const deviceId = plug.device_id || plug.plug_id;
-    if (!deviceId) {
+    // Use device_id if it's not empty, otherwise fall back to plug_id
+    // For Baytion/Tuya devices, plug_id is the actual device_id
+    const deviceId = (plug.device_id && plug.device_id.trim()) || plug.plug_id;
+    if (!deviceId || !deviceId.trim()) {
       console.error("❌ No device_id available for Baytion plug");
-      return { success: false, error: "No device_id available", plug_id: plug.plug_id || null };
+      return { success: false, error: "No device_id available. Please set device_id or plug_id for Baytion plug.", plug_id: plug.plug_id || null };
     }
+    
+    console.log(`🔑 Using device_id: ${deviceId} for Baytion plug control`);
 
     // 🔍 Step 1: Fetch supported functions
     let switchCode = "switch_1"; // default
@@ -492,7 +543,6 @@ async function controlBaytionPlug(plug, action) {
   }
 }
 
-
 // Optional: Function to get device details (for debugging)
 async function getDeviceDetails(deviceId) {
   try {
@@ -520,17 +570,25 @@ async function checkDeviceOnline(deviceId) {
   }
 }
 
-
 // Control plug power (turn on/off) - Updated for all brands
 const controlPlugPower = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action } = req.body; // 'on' or 'off'
+    let { action } = req.body; // 'on' or 'off'
 
-    if (!["on", "off"].includes(action)) {
+    console.log(`[controlPlugPower] Request - ID: ${id}, Action: ${action}, Body:`, req.body);
+
+    // Normalize action: trim and convert to lowercase
+    if (action && typeof action === 'string') {
+      action = action.trim().toLowerCase();
+    }
+
+    if (!action || !["on", "off"].includes(action)) {
+      console.error(`[controlPlugPower] Invalid action. Received: ${req.body.action}`);
       return res.status(400).json({
         success: false,
         message: 'Invalid action. Use "on" or "off"',
+        received: req.body.action,
       });
     }
 
@@ -539,6 +597,9 @@ const controlPlugPower = async (req, res) => {
       "SELECT * FROM smart_plugs WHERE id = ?",
       [id]
     );
+    
+    console.log(`[controlPlugPower] Found ${plugs.length} plug(s) with ID: ${id}`);
+    
     if (plugs.length === 0) {
       return res.status(404).json({
         success: false,
@@ -568,16 +629,54 @@ const controlPlugPower = async (req, res) => {
 
       // ✅ Check if control failed
       if (!result.success) {
-        // Mark as offline in DB
-        await db.execute(
-          'UPDATE smart_plugs SET status = "offline", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [id]
-        );
+        const errorMsg = result.error || "Unknown error";
+        
+        // Check for specific API access errors
+        let statusCode = 400;
+        let message = `Failed to control smart plug via ${plug.brand || "simulation"}`;
+        let simulate = false;
+        
+        if (errorMsg.includes("GET_TOKEN_FAILED") || errorMsg.includes("don't have access")) {
+          statusCode = 403; // Forbidden
+          message = "API access denied. Your server IP needs to be whitelisted in the Baytion/Tuya Cloud API settings.";
+          
+          // Option: Simulate success for development/testing when API is not accessible
+          // Uncomment the lines below to enable simulation mode
+          // console.log(`⚠️ Simulating plug control (API access denied): ${plug.name} -> ${action}`);
+          // await new Promise((resolve) => setTimeout(resolve, 500));
+          // await db.execute(
+          //   'UPDATE smart_plugs SET power_state = ?, status = "online", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+          //   [action, id]
+          // );
+          // return res.json({
+          //   success: true,
+          //   message: `Plug ${plug.name} simulated ${action} (API not accessible - IP whitelisting required)`,
+          //   mode: "SIMULATION",
+          //   warning: "This is a simulated action. Whitelist your server IP in Tuya Cloud for real control.",
+          // });
+        } else if (errorMsg.includes("device offline") || errorMsg.includes("device not online")) {
+          message = "Device is offline. Please check the device connection.";
+        } else if (errorMsg.includes("timeout") || errorMsg.includes("TIMEOUT")) {
+          message = "Request timed out. The device may be unreachable.";
+        }
+        
+        // Mark as offline in DB if it's a connection issue (not API access issue)
+        if (!errorMsg.includes("GET_TOKEN_FAILED") && !errorMsg.includes("don't have access")) {
+          await db.execute(
+            'UPDATE smart_plugs SET status = "offline", updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+            [id]
+          );
+        }
 
-        return res.status(400).json({
+        return res.status(statusCode).json({
           success: false,
-          message: `Failed to control smart plug via ${plug.brand || "simulation"}`,
-          error: result.error || "Unknown error",
+          message: message,
+          error: errorMsg,
+          brand: plug.brand,
+          // Include instructions for IP whitelisting
+          instructions: errorMsg.includes("GET_TOKEN_FAILED") || errorMsg.includes("don't have access") 
+            ? "To fix: Go to Tuya Cloud Developer Console → API Settings → IP Whitelist → Add your server IPs"
+            : undefined,
         });
       }
 
@@ -589,12 +688,14 @@ const controlPlugPower = async (req, res) => {
 
       // Emit socket event for real-time updates
       const io = req.app.get("io");
-      io.emit("plug_power_changed", {
-        plugId: id,
-        plug_id: plug.plug_id,
-        power_state: action,
-        table_id: plug.table_id,
-      });
+      if (io) {
+        io.emit("plug_power_changed", {
+          plugId: id,
+          plug_id: plug.plug_id,
+          power_state: action,
+          table_id: plug.table_id,
+        });
+      }
 
       return res.json({
         success: true,
@@ -858,7 +959,9 @@ const bulkControlPlugs = async (req, res) => {
 
     // Emit socket event for real-time updates
     const io = req.app.get('io');
-    io.emit('bulk_plug_control', { action, results });
+    if (io) {
+      io.emit('bulk_plug_control', { action, results });
+    }
 
     res.json({
       success: true,

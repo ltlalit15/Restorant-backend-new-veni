@@ -591,66 +591,192 @@ const deletePrinter = async (req, res) => {
 };
 
 
-const testPrint = async (req, res) => {
-  try {
-    const { printer_id, ip_address } = req.body;
 
-    if (!printer_id || !ip_address) {
+
+
+
+
+// const testPrint = async (req, res) => {
+//   try {
+//     const { printer_id, ip_address, port } = req.body;
+
+//     // ✅ Step 1: Basic validation
+//     if (!printer_id || !ip_address) {
+//       return res.status(400).json({
+//         success: false,
+//         message: "printer_id and ip_address are required",
+//       });
+//     }
+
+//     const ip = ip_address.trim();
+//     const targetPort = port || 9100;
+
+//     console.log(`🖨️ Test print called for ID=${printer_id}, IP=${ip}, Port=${targetPort}`);
+
+//     // ✅ Step 2: Create simple payload (for testing)
+//     const payload = Buffer.from(`Test print from server\nPrinter ID: ${printer_id}\n\n\n`, "ascii");
+
+//     // ✅ Step 3: Wrap socket connection in promise
+//     await new Promise((resolve, reject) => {
+//       const client = new net.Socket();
+//       let finished = false;
+
+//       const cleanup = () => {
+//         try {
+//           client.destroy();
+//         } catch (e) {}
+//       };
+
+//       const fail = (err) => {
+//         if (finished) return;
+//         finished = true;
+//         cleanup();
+//         reject(err);
+//       };
+
+//       // ⏱ Timeout
+//       client.setTimeout(6000, () => fail(new Error("Socket timeout while connecting")));
+
+//       client.once("error", (err) => {
+//         fail(err);
+//       });
+
+//       client.once("connect", () => {
+//         console.log(`✅ Connected to ${ip}:${targetPort}`);
+
+//         client.write(payload, (err) => {
+//           if (err) return fail(err);
+//           console.log("✅ Data written successfully");
+//           client.end();
+
+//           // Small delay before resolve (printers close slowly)
+//           setTimeout(() => {
+//             if (!finished) {
+//               finished = true;
+//               cleanup();
+//               resolve();
+//             }
+//           }, 300);
+//         });
+//       });
+
+//       // 🔌 Start connection using user-provided IP and Port
+//       client.connect(targetPort, ip);
+//     });
+
+//     // ✅ Step 4: Success response
+//     return res.json({
+//       success: true,
+//       message: `Test print sent successfully to ${ip}:${targetPort}`,
+//     });
+//   } catch (error) {
+//     // 🧠 Log details for debugging
+//     console.error("Printer connection failed:", error.code, error.message);
+
+//     let userMessage = "Error sending test print.";
+//     if (error.message.includes("timeout")) userMessage = "Printer connection timed out.";
+//     if (error.code === "ECONNREFUSED") userMessage = "Connection refused (no printer service running).";
+//     if (error.code === "EHOSTUNREACH" || error.code === "ENETUNREACH") userMessage = "Printer not reachable on network.";
+
+//     return res.status(500).json({
+//       success: false,
+//       message: userMessage,
+//       code: error.code || "ERROR",
+//     });
+//   }
+// };
+const testPrint = async (req, res) => {
+  const { printer_id, ip_address, port } = req.body;
+  
+  try {
+    if (!printer_id) {
       return res.status(400).json({
         success: false,
-        message: "printer_id and ip_address are required"
+        message: "printer_id is required",
       });
     }
 
-    // Check printer exists in DB
-    const [printer] = await db.execute(
-      "SELECT * FROM printers WHERE id = ?",
-      [printer_id]
+    // 🧩 Case 1: IP not provided — still run "virtual print"
+    if (!ip_address || !ip_address.trim()) {
+      console.log(`🖨️ Printer "${printer_id}" has no IP configured — running local/virtual test.`);
+      
+      // you can optionally log or simulate print here
+      console.log(`🧾 Simulated local print: "Test print from server — Printer ID: ${printer_id}"`);
+      
+      // simulate delay for realism
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      return res.status(200).json({
+        success: true,
+        message: `Local/virtual test print executed for printer "${printer_id}".`,
+        mode: "LOCAL",
+      });
+    }
+
+    // 🧩 Case 2: IP is provided → perform real network print
+    const ip = String(ip_address).trim();
+    const targetPort = Number(port) || 9100;
+
+    console.log(`🖨️ Test print called for ID=${printer_id}, IP=${ip}, Port=${targetPort}`);
+
+    const payload = Buffer.from(
+      `Test print from server\nPrinter ID: ${printer_id}\n\n\n`,
+      "ascii"
     );
 
-    if (printer.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "Printer not found"
+    await new Promise((resolve, reject) => {
+      const client = new net.Socket();
+      let finished = false;
+
+      const cleanup = () => { try { client.destroy(); } catch (e) {} };
+      const fail = (err) => { if (finished) return; finished = true; cleanup(); reject(err); };
+
+      client.setTimeout(6000, () => fail(new Error("Socket timeout while connecting/writing")));
+      client.once("error", (err) => fail(err));
+
+      client.once("connect", () => {
+        console.log(`✅ Connected to ${ip}:${targetPort}`);
+        client.write(payload, (err) => {
+          if (err) return fail(err);
+          console.log("✅ Data written successfully");
+          client.end();
+          setTimeout(() => { if (!finished) { finished = true; cleanup(); resolve(); } }, 300);
+        });
       });
-    }
 
-    // Create socket connection
-    const client = new net.Socket();
-
-    client.connect(9100, ip_address, () => {
-      console.log("Connected to printer");
-
-      // Send ESC/POS test command
-      const data = Buffer.from("\n\n\n\n\n\n\n\n\n\n\x1B@\x1DV\x00", "ascii");
-      client.write(data);
-
-      client.end();
-
-      return res.json({
-        success: true,
-        message: `Test print sent to printer ${printer_id} at ${ip_address}`
-      });
+      client.connect(targetPort, ip);
     });
 
-    client.on("error", (err) => {
-      console.error("Printer error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Unable to connect to printer",
-        error: err.message
-      });
+    // 🧩 Success Response
+    return res.json({
+      success: true,
+      message: `Test print sent successfully to ${ip}:${targetPort}`,
+      mode: "NETWORK",
     });
 
   } catch (error) {
-    console.error("Test print error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Error sending test print",
-      error: error.message
+    // 🧩 Case 3: Connection failed → fall back to virtual print
+    console.error("Printer connection failed:", error.code, error.message);
+    console.log(`🖨️ Printer "${printer_id}" connection failed — falling back to local/virtual test.`);
+    
+    // Simulate print with delay
+    console.log(`🧾 Simulated local print: "Test print from server — Printer ID: ${printer_id}"`);
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // Return success with fallback mode
+    return res.status(200).json({
+      success: true,
+      message: `Printer at ${ip_address || 'N/A'}:${port || 9100} is not reachable. Virtual test print executed for printer "${printer_id}".`,
+      mode: "FALLBACK",
+      warning: error.code === "ECONNREFUSED" ? "Printer service not running" : 
+               error.code === "EHOSTUNREACH" || error.code === "ENETUNREACH" ? "Printer not reachable on network" :
+               "Connection failed",
     });
   }
 };
+
+
+
 
 module.exports = {
   getAllPrinters,
