@@ -19,6 +19,31 @@ const calculateSessionCost = (startTime, endTime, hourlyRate) => {
 
 // Get all sessions - all data, safe version
 // Get all sessions - simple version
+// const getAllSessions = async (req, res) => {
+//   try {
+//     const [sessions] = await db.execute(
+//       `SELECT s.*, t.table_number, t.table_name, t.table_type, u.name AS user_name
+//        FROM sessions s
+//        JOIN tables t ON s.table_id = t.id
+//        LEFT JOIN users u ON s.user_id = u.id
+//        ORDER BY s.start_time DESC`
+//     );
+
+//     res.json({
+//       success: true,
+//       data: { sessions }
+//     });
+//   } catch (error) {
+//     console.error('Get all sessions error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error fetching sessions',
+//       error: error.message
+//     });
+//   }
+// };
+
+
 const getAllSessions = async (req, res) => {
   try {
     const [sessions] = await db.execute(
@@ -28,6 +53,13 @@ const getAllSessions = async (req, res) => {
        LEFT JOIN users u ON s.user_id = u.id
        ORDER BY s.start_time DESC`
     );
+
+    // Auto patch: if session_cost is 0 or null → use amount
+    sessions.forEach(s => {
+      if (!s.session_cost || s.session_cost == 0) {
+        s.session_cost = s.amount;
+      }
+    });
 
     res.json({
       success: true,
@@ -335,6 +367,109 @@ const deleteSession = async (req, res) => {
 // };
 
 
+// const startSession = async (req, res) => {
+//   try {
+//     const { table_id, user_id } = req.body;
+//     let { amount, time_limit, customer_name, customer_phone, start_time } = req.body;
+
+//     // Optional fields fallback
+//     customer_name = customer_name || null;
+//     customer_phone = customer_phone || null;
+//     amount = amount || 0;
+//     time_limit = time_limit || null; // can be null if not set
+
+//     // Check if table exists and is available
+//     const [tables] = await db.execute(
+//       'SELECT * FROM tables WHERE id = ? AND status IN ("available", "reserved")',
+//       [table_id]
+//     );
+
+//     if (tables.length === 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Table not found or not available'
+//       });
+//     }
+
+//     const table = tables[0];
+
+//     // Check if an active session exists
+//     const [activeSessions] = await db.execute(
+//       'SELECT * FROM sessions WHERE table_id = ? AND status = "active"',
+//       [table_id]
+//     );
+
+//     if (activeSessions.length > 0) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Table already has an active session'
+//       });
+//     }
+
+//     // Generate session ID
+//     const session_id = generateSessionId();
+
+   
+
+//     // Create session
+//     const [result] = await db.execute(
+//       `INSERT INTO sessions 
+//         (session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, hourly_rate, start_time) 
+//        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+//       [session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, table.hourly_rate, start_time]
+//     );
+
+//     // Update table status to occupied
+//     await db.execute(
+//       'UPDATE tables SET status = "occupied" WHERE id = ?',
+//       [table_id]
+//     );
+
+//     // Try to turn on plug if exists
+//     if (table.plug_id) {
+//       try {
+//         const io = req.app.get('io');
+//         io.emit('plug_auto_control', { 
+//           plug_id: table.plug_id,
+//           action: 'on',
+//           reason: 'session_started'
+//         });
+//       } catch (plugError) {
+//         console.error('Failed to turn on plug:', plugError);
+//       }
+//     }
+
+//     // Get created session details
+//     const [session] = await db.execute(
+//       `SELECT s.*, t.table_number, t.table_name, t.table_type
+//        FROM sessions s
+//        JOIN tables t ON s.table_id = t.id
+//        WHERE s.id = ?`,
+//       [result.insertId]
+//     );
+
+//     // Emit socket events
+//     const io = req.app.get('io');
+//     io.emit('session_started', session[0]);
+//     io.to(`table_${table_id}`).emit('session_started', session[0]);
+
+//     res.status(201).json({
+//       success: true,
+//       message: 'Session started successfully',
+//       data: { session: session[0] }
+//     });
+
+//   } catch (error) {
+//     console.error('Start session error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error starting session',
+//       error: error.message
+//     });
+//   }
+// };
+
+
 const startSession = async (req, res) => {
   try {
     const { table_id, user_id } = req.body;
@@ -382,9 +517,9 @@ const startSession = async (req, res) => {
     // Create session
     const [result] = await db.execute(
       `INSERT INTO sessions 
-        (session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, hourly_rate, start_time) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, table.hourly_rate, start_time]
+        (session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, hourly_rate, start_time, session_cost) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [session_id, table_id, user_id, amount, time_limit, customer_name, customer_phone, table.hourly_rate, start_time, amount]
     );
 
     // Update table status to occupied

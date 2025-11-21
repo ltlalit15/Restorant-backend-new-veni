@@ -10,6 +10,8 @@ router.get('/', verifyToken, checkRole(['admin', 'staff']), orderController.getA
 // Get pending orders (KOT)
 router.get('/pending', verifyToken, checkRole(['admin', 'staff']), orderController.getPendingOrders);
 
+router.get('/ready', verifyToken, checkRole(['admin', 'staff']), orderController.getReadyOrders);
+
 // Get order statistics
 router.get('/stats', verifyToken, checkRole(['admin', 'staff']), orderController.getOrderStats);
 

@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+
+
+
 // Generate JWT token
 const generateToken = (userId) => {
   return jwt.sign(
@@ -213,51 +216,108 @@ const updateProfile = async (req, res) => {
 };
 
 // Change password
+// const changePassword = async (req, res) => {
+//   try {
+//     const { newPassword } = req.body;
+//     const userId = req.params.id; // userId params se lo
+
+//     // Get user with password by id
+//     const user = await User.findById(userId);
+//     if (!user) {
+//       return res.status(404).json({
+//         success: false,
+//         message: 'User not found'
+//       });
+//     }
+//     // Update password
+//     const updated = await User.updatePassword(userId, newPassword);
+//     if (!updated) {
+//       return res.status(400).json({
+//         success: false,
+//         message: 'Failed to update password'
+//       });
+//     }
+
+//     res.json({
+//       success: true,
+//       message: 'Password changed successfully'
+//     });
+//   } catch (error) {
+//     console.error('Change password error:', error);
+//     res.status(500).json({
+//       success: false,
+//       message: 'Error changing password',
+//       error: error.message
+//     });
+//   }
+// };
+
+
+
+
+
+
+
+
+
+
 const changePassword = async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body;
-    const userId = req.params.id; // userId params se lo
+    const { newPassword } = req.body;
+    const userId = req.params.id;
 
-    // Get user with password by id
+    // Body validation
+    if (!newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password is required"
+      });
+    }
+
+    // Find user by ID
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found"
       });
     }
 
-    // Verify current password
-    const isCurrentPasswordValid = await User.verifyPassword(currentPassword, user.password);
-    if (!isCurrentPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        message: 'Current password is incorrect'
-      });
-    }
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // Update password
-    const updated = await User.updatePassword(userId, newPassword);
+    const updated = await User.findByIdAndUpdate(
+      userId,
+      { password: hashedPassword },
+      { new: true }
+    );
+
     if (!updated) {
       return res.status(400).json({
         success: false,
-        message: 'Failed to update password'
+        message: "Failed to update password"
       });
     }
 
-    res.json({
+    return res.json({
       success: true,
-      message: 'Password changed successfully'
+      message: "Password changed successfully"
     });
+
   } catch (error) {
-    console.error('Change password error:', error);
-    res.status(500).json({
+    console.error("Change password error:", error);
+    return res.status(500).json({
       success: false,
-      message: 'Error changing password',
+      message: "Error changing password",
       error: error.message
     });
   }
 };
+
+
+
+
 
 
 // Logout (client-side token removal)

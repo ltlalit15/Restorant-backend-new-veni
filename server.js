@@ -34,7 +34,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: ['http://localhost:5173', 'https://poslightcontrollive.netlify.app'],   // ✅ Same as app CORS
+    origin: ['http://localhost:5173', 'https://poslightcontrollive.netlify.app',"https://steady-cat-8bc093.netlify.app","https://comfy-sunburst-e4c259.netlify.app"],   // ✅ Same as app CORS
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'], // ✅ Allowed HTTP methods
     credentials: true
   }
@@ -47,7 +47,9 @@ const allowedOrigins = [
   'http://localhost:5173',
   'https://pos-light-house-new.netlify.app',
   'https://poslightcontrollive.netlify.app',
-  'https://pos-light-controls.netlify.app'
+  'https://pos-light-controls.netlify.app',
+ "https://steady-cat-8bc093.netlify.app",
+ "https://comfy-sunburst-e4c259.netlify.app"
 ];
 
 // ---------- CORS CONFIG ----------

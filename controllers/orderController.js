@@ -67,6 +67,27 @@ const getPendingOrders = async (req, res) => {
 };
 
 
+const getReadyOrders = async (req, res) => {
+  try {
+    const orders = await Order.getReadyOrdersGrouped();
+    res.json({
+      success: true,
+      data: {
+        printers: orders
+      }
+    });
+  } catch (error) {
+    console.error('Get ready orders error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching ready orders',
+      error: error.message
+    });
+  }
+};
+
+
+
 // Get order by ID
 const getOrderById = async (req, res) => {
   try {
@@ -364,5 +385,6 @@ module.exports = {
   getOrdersByTable,
   getOrdersBySession,
   getOrderStats,
-  deleteOrder
+  deleteOrder,
+  getReadyOrders
 };
