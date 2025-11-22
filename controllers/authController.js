@@ -1,6 +1,9 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
+const bcrypt = require("bcryptjs");
+const pool = require("../config/database.js");
+
 
 
 
@@ -261,12 +264,14 @@ const updateProfile = async (req, res) => {
 
 
 
+  // your MySQL connection file
+
 const changePassword = async (req, res) => {
   try {
     const { newPassword } = req.body;
     const userId = req.params.id;
 
-    // Body validation
+    // Validation
     if (!newPassword) {
       return res.status(400).json({
         success: false,
@@ -274,31 +279,24 @@ const changePassword = async (req, res) => {
       });
     }
 
-    // Find user by ID
-    const user = await User.findById(userId);
-    if (!user) {
+    // Check if user exists
+    const [user] = await pool.query("SELECT * FROM users WHERE id = ?", [userId]);
+
+    if (user.length === 0) {
       return res.status(404).json({
         success: false,
         message: "User not found"
       });
     }
 
-    // Hash new password
+    // Hash password
     const hashedPassword = await bcrypt.hash(newPassword, 10);
 
     // Update password
-    const updated = await User.findByIdAndUpdate(
-      userId,
-      { password: hashedPassword },
-      { new: true }
+    await pool.query(
+      "UPDATE users SET password = ?, reset_token = NULL, reset_expires = NULL, updated_at = NOW() WHERE id = ?",
+      [hashedPassword, userId]
     );
-
-    if (!updated) {
-      return res.status(400).json({
-        success: false,
-        message: "Failed to update password"
-      });
-    }
 
     return res.json({
       success: true,
@@ -314,6 +312,7 @@ const changePassword = async (req, res) => {
     });
   }
 };
+
 
 
 
