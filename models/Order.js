@@ -338,7 +338,7 @@ class Order {
       o.id as order_id, o.order_number, o.created_at, o.customer_name, o.subtotal,o.tax_amount,o.discount_amount,o.total_amount,
       t.table_number, t.table_name,
       oi.id as item_id, oi.quantity, oi.special_instructions, oi.status as item_status,
-      i.item_name, i.printer_id,
+      i.item_name, i.price as item_price,i.printer_id,
       c.id as category_id, c.category_name,
       sc.id as subcategory_id, sc.subcategory_name
     FROM orders o
@@ -373,6 +373,7 @@ class Order {
         table_name: row.table_name,
         item_id: row.item_id,
         item_name: row.item_name,
+         item_price: row.item_price,
         quantity: row.quantity,
         special_instructions: row.special_instructions,
         item_status: row.item_status,
