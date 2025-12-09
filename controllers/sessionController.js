@@ -114,7 +114,7 @@ const getActiveSessions = async (req, res) => {
        FROM sessions s
        JOIN tables t ON s.table_id = t.id
        LEFT JOIN users u ON s.user_id = u.id
-       WHERE s.status = 'active'
+       WHERE s.status IN ('active', 'Arrived')
        ORDER BY s.start_time ASC`
     );
 
