@@ -23,7 +23,7 @@ router.get('/:id/start_time', sessionController.getSessionStartTime)
 router.post('/start', verifyToken, checkPermission('manage_sessions'), sessionController.startSession);
 
 // End session
-router.patch('/:id/end', verifyToken, checkRole(['admin', 'staff']), sessionController.endSession);
+router.patch('/:id/end', verifyToken, checkRole(['admin', 'staff','user']), sessionController.endSession);
 
 // Transfer Session
 router.patch('/:id/transfer', verifyToken, checkRole(['admin', 'staff']), sessionController.updateSessionTransfer);
