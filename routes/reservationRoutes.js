@@ -13,6 +13,8 @@ router.get('/my-reservations', verifyToken, reservationController.getUserReserva
 // Get reservation by ID
 router.get('/:id', verifyToken, reservationController.getReservationById);
 
+router.get('/re/timeslots', reservationController.getTimeSlots);
+
 // Create new reservation
 router.post('/', verifyToken, validateReservation, handleValidationErrors, reservationController.createReservation);
 

@@ -569,6 +569,139 @@ const getReservationStats = async (req, res) => {
   }
 };
 
+const getTimeSlots = async (req, res) => {
+  try {
+    const { table_id, date, duration_hours } = req.query;
+
+    if (!table_id || !date || !duration_hours) {
+      return res.status(400).json({
+        success: false,
+        message: "table_id, date & duration_hours are required"
+      });
+    }
+
+    // Get business settings
+    const [settingsRow] = await db.execute("SELECT * FROM business_settings LIMIT 1");
+    const settings = settingsRow[0];
+
+    const day = moment(date).format("dddd");
+    let businessStart, businessEnd;
+
+    if (["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"].includes(day)) {
+      businessStart = settings.weekdays_start;
+      businessEnd = settings.weekdays_end;
+    } else if (day === "Saturday") {
+      businessStart = settings.saturday_start;
+      businessEnd = settings.saturday_end;
+    } else if (day === "Sunday") {
+      businessStart = settings.sunday_start;
+      businessEnd = settings.sunday_end;
+    }
+
+    if (!businessStart || !businessEnd) {
+      return res.status(400).json({
+        success: false,
+        message: `Business hours not configured for ${day}`
+      });
+    }
+
+    const businessStartMoment = moment(businessStart, "HH:mm");
+    const businessEndMoment = moment(businessEnd, "HH:mm");
+
+    // ---------------- FETCH RESERVATIONS ----------------
+    const [reservationRows] = await db.execute(
+      `SELECT reservation_time, duration_hours 
+       FROM reservations 
+       WHERE table_id = ? AND reservation_date = ? 
+       AND status IN ('confirmed','pending','checked_in')`,
+      [table_id, date]
+    );
+
+    const blocked_slots = [];
+
+    reservationRows.forEach(r => {
+      const start = moment(r.reservation_time, "HH:mm");
+      const end = moment(r.reservation_time, "HH:mm").add(r.duration_hours, "hours");
+
+      blocked_slots.push({
+        start: start.format("HH:mm"),
+        end: end.format("HH:mm"),
+        reason: "Reservation"
+      });
+    });
+
+
+    // ---------------- FETCH SESSIONS (DATE FILTER ADDED) ----------------
+    const [sessionRows] = await db.execute(
+      `SELECT start_time, end_time 
+       FROM sessions 
+       WHERE table_id = ?
+         AND DATE(created_at) = ?
+         AND status IN ('active','paused')`,
+      [table_id, date]
+    );
+
+    sessionRows.forEach(s => {
+      if (s.start_time && s.end_time) {
+        const start = moment(s.start_time, "HH:mm");
+        const end = moment(s.end_time, "HH:mm");
+
+        blocked_slots.push({
+          start: start.format("HH:mm"),
+          end: end.format("HH:mm"),
+          reason: "Session Running"
+        });
+      }
+    });
+
+
+    // ---------------- GENERATE 1-HOUR AVAILABLE SLOTS ----------------
+    const available_slots = [];
+    let slotStart = moment(businessStartMoment);
+    const duration = parseInt(duration_hours);
+
+    while (slotStart.add(0, "minutes").isBefore(businessEndMoment)) {
+      const slotEnd = moment(slotStart).add(duration, "hours");
+      if (slotEnd.isAfter(businessEndMoment)) break;
+
+      const startStr = slotStart.format("HH:mm");
+      const endStr = slotEnd.format("HH:mm");
+
+      // Check if this slot overlaps with blocked time windows
+      const isOverlapping = blocked_slots.some(bl => {
+        const blStart = moment(bl.start, "HH:mm");
+        const blEnd = moment(bl.end, "HH:mm");
+        return slotStart.isBefore(blEnd) && slotEnd.isAfter(blStart);
+      });
+
+      if (!isOverlapping) {
+        available_slots.push({ start: startStr, end: endStr });
+      }
+
+      slotStart.add(duration, "hours");
+    }
+
+
+    // ---------------- SEND RESPONSE ----------------
+    return res.json({
+      success: true,
+      date,
+      table_id,
+      duration_hours,
+      available_slots,
+      blocked_slots
+    });
+
+  } catch (error) {
+    console.error("Timeslots Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error fetching timeslots",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAllReservations,
   getUserReservations,
@@ -578,5 +711,6 @@ module.exports = {
   updateReservationStatus,
   cancelReservation,
   deleteReservation,
-  getReservationStats
+  getReservationStats,
+  getTimeSlots
 };

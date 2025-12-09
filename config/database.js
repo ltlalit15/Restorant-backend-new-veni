@@ -36,3 +36,33 @@ testConnection();
 module.exports = promisePool;
 
 
+//local
+
+// const mysql = require("mysql2");
+
+// // Create Promise Pool
+// const pool = mysql
+//   .createPool({
+//     host: "localhost",
+//     user: "root",
+//     password: "",
+//     database: "pos_live",
+//     port: 3306,
+//     waitForConnections: true,
+//     connectionLimit: 10,
+//     queueLimit: 0,
+//   })
+//   .promise();
+
+// // Test Connection
+// pool
+//   .getConnection()
+//   .then((conn) => {
+//     console.log("✅ MySQL connected successfully (LOCAL)!");
+//     conn.release();
+//   })
+//   .catch((err) => {
+//     console.error("❌ MySQL connection failed:", err.message);
+//   });
+
+// module.exports = pool;
