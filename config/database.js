@@ -36,3 +36,29 @@ testConnection();
 module.exports = promisePool;
 
 
+// // mydblocal
+//  const mysql = require('mysql2');
+//  const dotenv = require('dotenv');
+//  const pool = mysql
+//   .createPool({
+//     host: "localhost",
+//     user: "root",
+//     password: "Gopal_1820",
+//     database: "pos_db",
+//     port: 3306,
+//     waitForConnections: true,
+//     connectionLimit: 10,
+//     queueLimit: 0,
+//   })
+//   .promise();  // 🔥 THIS MAKES pool.query() RETURN A PROMISE
+
+// // Test MySQL connection
+// pool.getConnection()
+//   .then((connection) => {
+//     console.log("✅ MySQL connected successfully!");
+//     connection.release();
+//   })
+//   .catch((err) => {
+//     console.error("❌ MySQL connection failed:", err.message);
+//   });
+// module.exports = pool;
