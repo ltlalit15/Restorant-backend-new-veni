@@ -32,7 +32,7 @@ router.patch('/:id/transfer', verifyToken, checkRole(['admin', 'staff']), sessio
 router.delete('/:id', verifyToken, checkRole(['admin', 'staff']), sessionController.deleteSession);
 
 // Pause session
-router.patch('/:id/pause', verifyToken, checkRole(['admin', 'staff']), sessionController.pauseSession);
+router.patch('/:id/pause', verifyToken, checkRole(['admin', 'staff','user']), sessionController.pauseSession);
 
 // Resume session
 router.patch('/:id/resume', verifyToken, checkRole(['admin', 'staff']), sessionController.resumeSession);

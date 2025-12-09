@@ -5,6 +5,7 @@ const { verifyToken, checkRole, checkPermission } = require('../middleware/auth'
 const { validateReservation, handleValidationErrors } = require('../middleware/validation');
 
 // Get all reservations
+
 router.get('/', verifyToken, checkRole(['admin', 'staff']), reservationController.getAllReservations);
 
 // Get user's reservations
